@@ -1,0 +1,162 @@
+<t-navbar class="nav" title="局域网快传" />
+
+<view class="dash">
+  <!-- 本机设备卡片 -->
+  <view class="device-card">
+    <view class="device-card__row">
+      <view class="device-card__info">
+        <view class="device-name-row">
+          <text class="device-name">{{ deviceName }}</text>
+          <view class="edit-btn" bindtap="onRenameTap" hover-class="edit-btn--hover">
+            <t-icon name="edit" size="30rpx" color="#ffffff" />
+          </view>
+        </view>
+        <view class="device-tags">
+          <view class="net-tag">
+            <t-icon name="wifi" size="26rpx" color="#bcd4ff" />
+            <text class="net-tag__text">{{ ssid }}</text>
+          </view>
+          <view class="net-tag">
+            <t-icon name="link" size="26rpx" color="#bcd4ff" />
+            <text class="net-tag__text">{{ ip }}</text>
+          </view>
+        </view>
+      </view>
+      <view class="device-card__type">
+        <text class="device-type">{{ deviceType }}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 雷达扫描区 -->
+  <view class="radar-card">
+    <view class="radar-wrap">
+      <canvas type="2d" id="radarCanvas" class="radar"></canvas>
+      <view class="radar-center">
+        <t-avatar icon="mobile" shape="circle" size="80rpx" />
+      </view>
+    </view>
+    <view class="radar-status">{{ devices.length ? '发现 ' + devices.length + ' 台在线设备' : '正在扫描局域网设备...' }}</view>
+    <view class="radar-actions">
+      <t-button theme="primary" variant="outline" size="small" icon="refresh" bindtap="onRescan">重新扫描局域网设备</t-button>
+    </view>
+    <view class="scan-hint" wx:if="{{ scanHint }}">
+      <t-icon name="error-circle" size="28rpx" color="#e37318" />
+      <text class="scan-hint__text">{{ scanHint }}</text>
+    </view>
+  </view>
+
+  <!-- 在线邻居列表 -->
+  <view class="section-title">在线邻居 ({{ devices.length }})</view>
+  <t-cell-group wx:if="{{ devices.length }}">
+    <t-cell
+      wx:for="{{ devices }}"
+      wx:key="ip"
+      title="{{ item.deviceName }}"
+      description="{{ item.ip }}"
+      leftIcon="mobile"
+      hover="{{ false }}"
+    >
+      <view slot="note" class="cell-right">
+        <t-tag theme="primary" variant="light" size="small">{{ item.deviceType }}</t-tag>
+        <t-button theme="primary" variant="outline" size="extra-small" data-index="{{ index }}" bindtap="onPickTarget">
+          选择并发送
+        </t-button>
+      </view>
+    </t-cell>
+  </t-cell-group>
+  <view class="empty" wx:else>
+    <t-icon name="radar" size="88rpx" color="#c5c5c5" />
+    <view class="empty__text">暂无在线设备, 请保持双方在同一 Wi-Fi 下</view>
+  </view>
+</view>
+
+<!-- 文件选择与任务构建面板 -->
+<t-popup visible="{{ pickerVisible }}" placement="bottom" bind:visible-change="onPickerVisibleChange">
+  <view class="picker">
+    <view class="picker__header">
+      <text class="picker__title">发送至 {{ targetDevice.deviceName || '' }}</text>
+      <view class="picker__close" bindtap="onClosePicker">
+        <t-icon name="close" size="40rpx" color="#8b8b8b" />
+      </view>
+    </view>
+    <t-grid column="{{ 2 }}" border="{{ false }}">
+      <t-grid-item text="微信聊天文件" icon="chat" bind:click="onChooseMessageFile" />
+      <t-grid-item text="相册图片/视频" icon="image" bind:click="onChooseMedia" />
+    </t-grid>
+    <view class="picker__list" wx:if="{{ selectedFiles.length }}">
+      <view class="picker__list-title">待发清单 ({{ selectedFiles.length }})</view>
+      <scroll-view scroll-y class="picker__scroll">
+        <view class="file-row" wx:for="{{ selectedFiles }}" wx:key="path">
+          <view class="file-row__icon" style="background: {{ item.iconColor }}1a">
+            <t-icon name="{{ item.icon }}" size="44rpx" color="{{ item.iconColor }}" />
+          </view>
+          <view class="file-row__info">
+            <view class="file-row__name">{{ item.name }}</view>
+          </view>
+          <t-tag theme="default" variant="light" size="small">{{ item.sizeText }}</t-tag>
+          <view class="file-row__del" data-index="{{ index }}" catchtap="onRemoveFile">
+            <t-icon name="delete" size="40rpx" color="#d54941" />
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+    <view class="picker__footer">
+      <view class="picker__summary">
+        共 {{ selectedFiles.length }} 个文件, {{ totalSizeText }}
+      </view>
+      <t-button theme="primary" size="medium" disabled="{{ !selectedFiles.length }}" bindtap="onConfirmSend">
+        确认发送
+      </t-button>
+    </view>
+  </view>
+</t-popup>
+
+<!-- 修改设备名 -->
+<t-popup visible="{{ renameVisible }}" placement="center" bind:visible-change="onRenameVisibleChange">
+  <view class="rename">
+    <view class="rename__title">修改设备名</view>
+    <t-input
+      value="{{ renameValue }}"
+      placeholder="请输入新的设备名"
+      maxlength="{{ 24 }}"
+      borderless
+      bind:change="onRenameInput"
+    />
+    <view class="rename__btns">
+      <t-button theme="default" variant="outline" size="small" bindtap="onRenameCancel">取消</t-button>
+      <t-button theme="primary" size="small" bindtap="onRenameConfirm">保存</t-button>
+    </view>
+  </view>
+</t-popup>
+
+<!-- 传输进度控制面板 -->
+<t-popup visible="{{ transferVisible }}" placement="center" closeOnOverlayClick="{{ false }}">
+  <view class="transfer">
+    <view class="transfer__title">{{ transfer.role === 'send' ? '正在发送文件' : '正在接收文件' }}</view>
+    <view class="transfer__peer">{{ transfer.peerText }}</view>
+    <view class="transfer__speed">{{ transfer.speedText }}</view>
+    <view class="transfer__eta">预计剩余 {{ transfer.etaText }}</view>
+    <view class="transfer__status" wx:if="{{ transfer.statusText }}">{{ transfer.statusText }}</view>
+    <view class="transfer__block">
+      <view class="transfer__label">
+        <text>批次总进度</text>
+        <text>{{ transfer.doneFiles }}/{{ transfer.totalFiles }} 个文件 · {{ transfer.percent }}%</text>
+      </view>
+      <t-progress percentage="{{ transfer.percent }}" label="{{ false }}" strokeWidth="{{ 12 }}" />
+    </view>
+    <view class="transfer__block" wx:if="{{ transfer.currentName }}">
+      <view class="transfer__label">
+        <text class="transfer__filename">{{ transfer.currentName }}</text>
+        <text>{{ transfer.filePercent }}%</text>
+      </view>
+      <t-progress percentage="{{ transfer.filePercent }}" label="{{ false }}" strokeWidth="{{ 8 }}" color="#2ba471" />
+    </view>
+    <view class="transfer__btns">
+      <t-button theme="danger" variant="outline" size="small" bindtap="onCancelTransfer">取消传输</t-button>
+    </view>
+  </view>
+</t-popup>
+
+<t-toast id="t-toast" />
+<t-dialog id="t-dialog" />

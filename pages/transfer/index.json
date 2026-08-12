@@ -1,0 +1,19 @@
+{
+  "navigationBarTitleText": "局域网快传",
+  "usingComponents": {
+    "t-navbar": "tdesign-miniprogram/navbar/navbar",
+    "t-icon": "tdesign-miniprogram/icon/icon",
+    "t-button": "tdesign-miniprogram/button/button",
+    "t-tag": "tdesign-miniprogram/tag/tag",
+    "t-cell": "tdesign-miniprogram/cell/cell",
+    "t-cell-group": "tdesign-miniprogram/cell-group/cell-group",
+    "t-popup": "tdesign-miniprogram/popup/popup",
+    "t-grid": "tdesign-miniprogram/grid/grid",
+    "t-grid-item": "tdesign-miniprogram/grid-item/grid-item",
+    "t-dialog": "tdesign-miniprogram/dialog/dialog",
+    "t-toast": "tdesign-miniprogram/toast/toast",
+    "t-progress": "tdesign-miniprogram/progress/progress",
+    "t-avatar": "tdesign-miniprogram/avatar/avatar",
+    "t-input": "tdesign-miniprogram/input/input"
+  }
+}
