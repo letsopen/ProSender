@@ -347,40 +347,6 @@ page,
 }
 page {
   background-color: var(--td-bg-color-page);
-  --bg-color-demo-desc: var(--td-text-color-secondary);
-  --bg-color-demo-title: var(--td-text-color-primary);
-  --bg-color-demo: var(--td-bg-color-container);
-  --bg-color-demo-secondary: var(--td-bg-color-container);
   --td-navbar-bg-color: var(--td-bg-color-page);
   --td-navbar-color: var(--td-text-color-primary);
-  --td-progress-circle-inner-bg-color: var(--bg-color-demo);
-}
-.skyline {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
-.skyline .scroll-view {
-  flex: 1;
-  height: 0;
-}
-.demo {
-  padding-bottom: 56rpx;
-}
-.demo-navbar {
-  --td-navbar-bg-color: var(--td-bg-color-container);
-  --td-navbar-color: var(--td-text-color-primary);
-}
-.demo-title {
-  font-size: 48rpx;
-  font-weight: 700;
-  line-height: 64rpx;
-  margin: 48rpx 32rpx 0;
-  color: var(--bg-color-demo-title);
-}
-.demo-desc {
-  font-size: 28rpx;
-  color: var(--bg-color-demo-desc);
-  margin: 16rpx 32rpx 0;
-  line-height: 44rpx;
 }
