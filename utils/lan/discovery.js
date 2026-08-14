@@ -109,16 +109,21 @@ export default class Discovery extends Emitter {
   }
 
   _upsert(ip, packet) {
-    const existed = this._devices.has(ip);
+    const prev = this._devices.get(ip);
+    const deviceName = packet.deviceName || '未知设备';
+    const deviceType = packet.deviceType || 'Unknown';
     this._devices.set(ip, {
       ip,
       deviceId: packet.deviceId,
-      deviceName: packet.deviceName || '未知设备',
-      deviceType: packet.deviceType || 'Unknown',
+      deviceName,
+      deviceType,
       tcpPort: packet.tcpPort || TCP_PORT,
       lastSeen: Date.now(),
     });
-    if (!existed) this._emitDevices();
+    // 新设备上线或设备信息变更 (如改名) 时, 均需刷新 UI 列表
+    if (!prev || prev.deviceName !== deviceName || prev.deviceType !== deviceType) {
+      this._emitDevices();
+    }
   }
 
   _sweep() {

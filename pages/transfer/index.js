@@ -17,8 +17,6 @@ Page({
     targetDevice: {},
     selectedFiles: [],
     totalSizeText: '0 B',
-    renameVisible: false,
-    renameValue: '',
     transferVisible: false,
     transfer: {
       role: 'send',
@@ -107,32 +105,26 @@ Page({
   },
 
   // ---------- 设备名修改 ----------
+  // 使用原生可输入模态框, 规避弹层内嵌套 input 的事件兼容问题
   onRenameTap() {
-    this.setData({ renameVisible: true, renameValue: this.data.deviceName });
-  },
-
-  onRenameInput(e) {
-    this.setData({ renameValue: e.detail.value });
-  },
-
-  onRenameVisibleChange(e) {
-    this.setData({ renameVisible: e.detail.visible });
-  },
-
-  onRenameCancel() {
-    this.setData({ renameVisible: false });
-  },
-
-  onRenameConfirm() {
-    const name = (this.data.renameValue || '').trim();
-    if (!name) {
-      Toast({ context: this, selector: '#t-toast', message: '设备名不能为空', theme: 'warning' });
-      return;
-    }
-    setDeviceName(name);
-    this.setData({ deviceName: name, renameVisible: false });
-    LanCore.rescan();
-    Toast({ context: this, selector: '#t-toast', message: '设备名已更新', theme: 'success' });
+    wx.showModal({
+      title: '修改设备名',
+      editable: true,
+      placeholderText: '请输入新的设备名',
+      content: this.data.deviceName,
+      success: (res) => {
+        if (!res.confirm) return;
+        const name = (res.content || '').trim().slice(0, 24);
+        if (!name) {
+          Toast({ context: this, selector: '#t-toast', message: '设备名不能为空', theme: 'warning' });
+          return;
+        }
+        setDeviceName(name);
+        this.setData({ deviceName: name });
+        LanCore.rescan();
+        Toast({ context: this, selector: '#t-toast', message: '设备名已更新', theme: 'success' });
+      },
+    });
   },
 
   // ---------- 文件选择 ----------

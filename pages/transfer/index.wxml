@@ -112,24 +112,6 @@
   </view>
 </t-popup>
 
-<!-- 修改设备名 -->
-<t-popup visible="{{ renameVisible }}" placement="center" bind:visible-change="onRenameVisibleChange">
-  <view class="rename">
-    <view class="rename__title">修改设备名</view>
-    <t-input
-      value="{{ renameValue }}"
-      placeholder="请输入新的设备名"
-      maxlength="{{ 24 }}"
-      borderless
-      bind:change="onRenameInput"
-    />
-    <view class="rename__btns">
-      <t-button theme="default" variant="outline" size="small" bindtap="onRenameCancel">取消</t-button>
-      <t-button theme="primary" size="small" bindtap="onRenameConfirm">保存</t-button>
-    </view>
-  </view>
-</t-popup>
-
 <!-- 传输进度控制面板 -->
 <t-popup visible="{{ transferVisible }}" placement="center" closeOnOverlayClick="{{ false }}">
   <view class="transfer">

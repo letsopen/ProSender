@@ -245,29 +245,6 @@
   color: var(--td-text-color-secondary);
 }
 
-/* 改名弹窗 */
-.rename {
-  width: 600rpx;
-  background: var(--td-bg-color-container);
-  border-radius: 24rpx;
-  padding: 40rpx 32rpx 32rpx;
-}
-
-.rename__title {
-  font-size: 32rpx;
-  font-weight: 600;
-  color: var(--td-text-color-primary);
-  margin-bottom: 24rpx;
-  text-align: center;
-}
-
-.rename__btns {
-  margin-top: 32rpx;
-  display: flex;
-  justify-content: flex-end;
-  gap: 24rpx;
-}
-
 /* 传输进度面板 */
 .transfer {
   width: 620rpx;

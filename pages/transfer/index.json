@@ -13,7 +13,6 @@
     "t-dialog": "tdesign-miniprogram/dialog/dialog",
     "t-toast": "tdesign-miniprogram/toast/toast",
     "t-progress": "tdesign-miniprogram/progress/progress",
-    "t-avatar": "tdesign-miniprogram/avatar/avatar",
-    "t-input": "tdesign-miniprogram/input/input"
+    "t-avatar": "tdesign-miniprogram/avatar/avatar"
   }
 }
