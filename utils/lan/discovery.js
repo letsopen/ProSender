@@ -1,17 +1,20 @@
 import Emitter from './emitter';
-import { PROTOCOL, UDP_PORT, TCP_PORT, BROADCAST_ADDR, MSG, PING_INTERVAL, DEVICE_TTL } from './constants';
-import { getDeviceId, getDeviceName, getDeviceType } from './device';
-import { utf8Decode } from './utf8';
+import { PROTOCOL, UDP_PORT, BROADCAST_ADDR, MSG, PING_INTERVAL, DEVICE_TTL, SUBNET_SCAN_INTERVAL } from './constants';
+import { getDeviceId, getDeviceName, getDeviceType, getLocalIp } from './device';
 
-// UDP 设备发现: 每 3s 广播 PING (兼作心跳), 收到 PING 回 PONG, 10s 无心跳剔除
+// UDP 设备发现: 广播 + 子网单播轮扫双通道 (真机普遍丢弃广播包, 单播全平台可靠)
+// 收到 PING 回 PONG 并互相收录, 10s 无心跳剔除
 export default class Discovery extends Emitter {
-  constructor() {
+  constructor(link) {
     super();
-    this._socket = null;
+    this._link = link;
     this._devices = new Map();
     this._pingTimer = null;
     this._ttlTimer = null;
+    this._scanTimer = null;
+    this._scanning = false;
     this._running = false;
+    this._onPacket = ({ ip, obj }) => this._handle(ip, obj);
   }
 
   get running() {
@@ -21,90 +24,74 @@ export default class Discovery extends Emitter {
   start() {
     if (this._running) return;
     this._running = true;
-    try {
-      this._socket = wx.createUDPSocket();
-      this._socket.bind(UDP_PORT);
-      this._socket.onMessage((res) => this._onMessage(res));
-      this._socket.onError((err) => {
-        console.warn('[lan] udp error', err);
-        this.emit('error', err);
-      });
-      if (this._socket.onListening) this._socket.onListening(() => this.ping());
-    } catch (e) {
-      console.error('[lan] udp init failed', e);
-      this.emit('error', e);
-      return;
-    }
+    this._link.on('packet', this._onPacket);
     this.ping();
+    this.scanSubnet();
     this._pingTimer = setInterval(() => this.ping(), PING_INTERVAL);
+    this._scanTimer = setInterval(() => this.scanSubnet(), SUBNET_SCAN_INTERVAL);
     this._ttlTimer = setInterval(() => this._sweep(), 2000);
   }
 
   stop() {
     this._running = false;
-    if (this._pingTimer) clearInterval(this._pingTimer);
-    if (this._ttlTimer) clearInterval(this._ttlTimer);
-    this._pingTimer = null;
-    this._ttlTimer = null;
-    if (this._socket) {
-      try {
-        this._socket.close();
-      } catch (e) {}
-      this._socket = null;
-    }
+    this._link.off('packet', this._onPacket);
+    [this._pingTimer, this._ttlTimer, this._scanTimer].forEach((t) => t && clearInterval(t));
+    this._pingTimer = this._ttlTimer = this._scanTimer = null;
     this._devices.clear();
     this.emit('devices', []);
   }
 
   _selfPacket(action) {
-    return JSON.stringify({
+    return {
       protocol: PROTOCOL,
       action,
       deviceId: getDeviceId(),
       deviceName: getDeviceName(),
       deviceType: getDeviceType(),
-      tcpPort: TCP_PORT,
+      udpPort: UDP_PORT,
       timestamp: Date.now(),
-    });
+    };
   }
 
+  // 广播发现 (对开发者工具/PC 端有效)
   ping() {
-    if (!this._socket) return;
-    try {
-      this._socket.send({
-        address: BROADCAST_ADDR,
-        port: UDP_PORT,
-        message: this._selfPacket(MSG.PING),
-      });
-    } catch (e) {
-      console.warn('[lan] udp broadcast failed', e);
-    }
+    this._link.send(this._selfPacket(MSG.PING), BROADCAST_ADDR, UDP_PORT);
   }
 
-  _onMessage(res) {
-    let packet;
-    try {
-      const text = typeof res.message === 'string' ? res.message : utf8Decode(new Uint8Array(res.message));
-      packet = JSON.parse(text);
-    } catch (e) {
-      return;
-    }
-    if (!packet || packet.protocol !== PROTOCOL) return;
-    if (packet.deviceId === getDeviceId()) return;
-    const ip = res.remoteInfo && res.remoteInfo.address;
-    if (!ip) return;
+  // 子网 /24 单播轮扫 (对真机有效), 每 tick 发 16 台, 避免瞬时洪泛
+  async scanSubnet() {
+    if (this._scanning) return;
+    const ip = await getLocalIp();
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return;
+    this._scanning = true;
+    const prefix = ip.split('.').slice(0, 3).join('.');
+    let host = 1;
+    const timer = setInterval(() => {
+      if (!this._running) {
+        clearInterval(timer);
+        this._scanning = false;
+        return;
+      }
+      for (let k = 0; k < 16 && host <= 254; k++, host++) {
+        const target = `${prefix}.${host}`;
+        if (target === ip) continue;
+        this._link.send(this._selfPacket(MSG.PING), target, UDP_PORT);
+      }
+      if (host > 254) {
+        clearInterval(timer);
+        this._scanning = false;
+      }
+    }, 50);
+  }
 
-    if (packet.action === MSG.PING) {
-      this._upsert(ip, packet);
-      try {
-        this._socket.send({
-          address: ip,
-          port: res.remoteInfo.port || UDP_PORT,
-          message: this._selfPacket(MSG.PONG),
-        });
-      } catch (e) {}
-    } else if (packet.action === MSG.PONG) {
-      this._upsert(ip, packet);
+  _handle(ip, obj) {
+    if (!ip) return;
+    if (obj.deviceId === getDeviceId()) return;
+    if (obj.action === MSG.PING) {
+      this._upsert(ip, obj);
+      this._link.send(this._selfPacket(MSG.PONG), ip, UDP_PORT);
+    } else if (obj.action === MSG.PONG) {
+      this._upsert(ip, obj);
     }
   }
 
@@ -117,7 +104,7 @@ export default class Discovery extends Emitter {
       deviceId: packet.deviceId,
       deviceName,
       deviceType,
-      tcpPort: packet.tcpPort || TCP_PORT,
+      udpPort: packet.udpPort || UDP_PORT,
       lastSeen: Date.now(),
     });
     // 新设备上线或设备信息变更 (如改名) 时, 均需刷新 UI 列表

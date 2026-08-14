@@ -1,20 +1,23 @@
 import Emitter from './emitter';
+import UdpLink from './udp-link';
 import Discovery from './discovery';
 import SenderSession from './sender';
 import ReceiverSession from './receiver';
-import { TCP_PORT, TEMP_TTL } from './constants';
+import { MSG, TEMP_TTL } from './constants';
 
 const fsm = wx.getFileSystemManager();
 
-// LAN 核心协调器 (单例): 管理 UDP 发现, TCP 服务监听, 收发会话生命周期
+// LAN 核心协调器 (单例): 共享 UDP 链路 + 设备发现 + 收发会话生命周期
+// 全平台 (Android/iOS/HarmonyOS/Win/Mac/开发者工具) 通用, 无需监听端口
 class LanCore extends Emitter {
   constructor() {
     super();
     this._inited = false;
-    this.discovery = new Discovery();
-    this._server = null;
+    this.link = new UdpLink();
+    this.discovery = new Discovery(this.link);
     this._sender = null;
     this._receiver = null;
+    this._onPacket = ({ ip, port, obj }) => this._dispatch(ip, port, obj);
   }
 
   init() {
@@ -22,14 +25,10 @@ class LanCore extends Emitter {
     this._inited = true;
     this._cleanupTempFiles();
     this._checkLocalNetworkPermission();
-    this._wireDiscovery();
-    this.discovery.start();
-    this._startTcpServer();
-  }
-
-  _wireDiscovery() {
+    this.link.start();
+    this.link.on('packet', this._onPacket);
     this.discovery.on('devices', (list) => this.emit('devices', list));
-    this.discovery.on('error', (err) => this.emit('discoveryError', err));
+    this.discovery.start();
   }
 
   rescan() {
@@ -37,51 +36,34 @@ class LanCore extends Emitter {
       this.discovery.start();
     }
     this.discovery.ping();
+    this.discovery.scanSubnet();
   }
 
-  _startTcpServer() {
-    if (!wx.createTCPServer) {
-      console.warn('[lan] createTCPServer unsupported, receiving disabled');
-      return;
-    }
-    try {
-      this._server = wx.createTCPServer();
-      this._server.onConnect((res) => {
-        if (this._receiver) {
-          // 同一时刻仅处理一个接收会话
-          try {
-            res.socket.close();
-          } catch (e) {}
-          return;
-        }
-        const session = new ReceiverSession(res.socket, res.remoteInfo || {});
-        this._receiver = session;
-        session.on('request', (payload) => this.emit('request', payload));
-        session.on('progress', (p) => this.emit('recvProgress', p));
-        session.on('done', (d) => {
-          this._receiver = null;
-          this.emit('recvDone', d);
-        });
-        session.on('error', (e) => {
-          this._receiver = null;
-          this.emit('recvError', e);
-        });
-      });
-      this._server.onError((err) => {
-        console.warn('[lan] tcp server error', err);
-      });
-      this._server.listen(TCP_PORT);
-    } catch (e) {
-      console.error('[lan] tcp server init failed', e);
-    }
+  // 传输请求入口: 无活跃接收会话时创建新会话并转发首个报文
+  _dispatch(ip, port, obj) {
+    if (obj.type !== MSG.TRANSFER_REQ) return;
+    if (this._receiver) return; // 同一时刻仅处理一个接收会话
+    const session = new ReceiverSession(this.link, ip, port);
+    this._receiver = session;
+    session.on('request', (payload) => this.emit('request', payload));
+    session.on('progress', (p) => this.emit('recvProgress', p));
+    session.on('done', (d) => {
+      this._receiver = null;
+      this.emit('recvDone', d);
+    });
+    session.on('error', (e) => {
+      this._receiver = null;
+      this.emit('recvError', e);
+    });
+    session.dispatch(ip, obj);
   }
 
-  // 发送端入口: target = {ip, tcpPort, deviceName}, files = [{path, name, size}]
+  // 发送端入口: target = {ip, udpPort, deviceName}, files = [{path, name, size}]
   sendFiles(target, files) {
     if (this._sender) {
       return { ok: false, message: '当前存在进行中的发送任务' };
     }
-    const session = new SenderSession(target, files);
+    const session = new SenderSession(this.link, target, files);
     this._sender = session;
     session.on('status', (text) => this.emit('sendStatus', text));
     session.on('progress', (p) => this.emit('sendProgress', p));
