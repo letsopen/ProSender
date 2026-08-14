@@ -30,7 +30,7 @@
 
   <!-- 雷达扫描区 -->
   <view class="radar-card">
-    <view class="radar-wrap" hidden="{{ pickerVisible || transferVisible || authVisible }}">
+    <view class="radar-wrap" hidden="{{ pickerVisible || transferVisible || authVisible || inboxVisible }}">
       <canvas type="2d" id="radarCanvas" class="radar"></canvas>
       <view class="radar-center">
         <t-avatar icon="mobile" shape="circle" size="80rpx" />
@@ -44,6 +44,14 @@
       <t-icon name="error-circle" size="28rpx" color="#e37318" />
       <text class="scan-hint__text">{{ scanHint }}</text>
     </view>
+  </view>
+
+  <!-- 接收文件入口 -->
+  <view class="inbox-entry" bindtap="onOpenInbox" hover-class="inbox-entry--hover">
+    <t-icon name="folder-open" size="40rpx" color="#0052d9" />
+    <text class="inbox-entry__text">接收文件</text>
+    <t-tag wx:if="{{ inboxCount }}" theme="primary" variant="light" size="small">{{ inboxCount }}</t-tag>
+    <t-icon name="chevron-right" size="36rpx" color="#a6a6a6" />
   </view>
 
   <!-- 在线邻居列表 -->
@@ -108,6 +116,39 @@
       <t-button theme="primary" size="medium" disabled="{{ !selectedFiles.length }}" bindtap="onConfirmSend">
         确认发送
       </t-button>
+    </view>
+  </view>
+</t-popup>
+
+<!-- 接收文件列表 -->
+<t-popup visible="{{ inboxVisible }}" placement="bottom" bind:visible-change="onInboxVisibleChange">
+  <view class="inbox">
+    <view class="picker__header">
+      <text class="picker__title">接收文件 ({{ inboxFiles.length }})</text>
+      <view class="picker__close" bindtap="onCloseInbox">
+        <t-icon name="close" size="40rpx" color="#8b8b8b" />
+      </view>
+    </view>
+    <scroll-view scroll-y class="inbox__scroll" wx:if="{{ inboxFiles.length }}">
+      <view class="file-row" wx:for="{{ inboxFiles }}" wx:key="path" data-index="{{ index }}" bindtap="onInboxOpen">
+        <view class="file-row__icon" style="background: {{ item.iconColor }}1a">
+          <t-icon name="{{ item.icon }}" size="44rpx" color="{{ item.iconColor }}" />
+        </view>
+        <view class="file-row__info">
+          <view class="file-row__name">{{ item.name }}</view>
+          <view class="file-row__meta">{{ item.sizeText }} · {{ item.timeText }}</view>
+        </view>
+        <view class="file-row__op" data-index="{{ index }}" catchtap="onInboxSave">
+          <t-icon name="download" size="40rpx" color="#0052d9" />
+        </view>
+        <view class="file-row__op" data-index="{{ index }}" catchtap="onInboxRemove">
+          <t-icon name="delete" size="40rpx" color="#d54941" />
+        </view>
+      </view>
+    </scroll-view>
+    <view class="empty" wx:else>
+      <t-icon name="folder-open" size="88rpx" color="#c5c5c5" />
+      <view class="empty__text">暂无接收记录, 收到的文件会保存在这里</view>
     </view>
   </view>
 </t-popup>

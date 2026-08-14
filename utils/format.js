@@ -56,3 +56,7 @@ export function fileIconInfo(fileName) {
 export function isImageFile(fileName) {
   return /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(fileName);
 }
+
+export function isVideoFile(fileName) {
+  return /\.(mp4|mov|avi|mkv|m4v)$/i.test(fileName);
+}

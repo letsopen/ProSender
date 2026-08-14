@@ -135,6 +135,48 @@
   line-height: 36rpx;
 }
 
+/* 接收文件入口 */
+.inbox-entry {
+  margin-top: 24rpx;
+  background: var(--td-bg-color-container);
+  border-radius: 24rpx;
+  padding: 28rpx 32rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.inbox-entry--hover {
+  background: var(--td-bg-color-container-active);
+}
+
+.inbox-entry__text {
+  flex: 1;
+  font-size: 30rpx;
+  font-weight: 500;
+  color: var(--td-text-color-primary);
+}
+
+.inbox {
+  background: var(--td-bg-color-container);
+  border-radius: 24rpx 24rpx 0 0;
+  padding: 32rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
+}
+
+.inbox__scroll {
+  max-height: 640rpx;
+}
+
+.file-row__meta {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: var(--td-text-color-placeholder);
+}
+
+.file-row__op {
+  padding: 8rpx 0 8rpx 28rpx;
+}
+
 /* 邻居列表 */
 .section-title {
   margin: 32rpx 0 16rpx;

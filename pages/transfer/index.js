@@ -2,7 +2,8 @@ import Toast from 'tdesign-miniprogram/toast/index';
 import Dialog from 'tdesign-miniprogram/dialog/index';
 import LanCore from '../../utils/lan/core';
 import { getDeviceName, setDeviceName, getDeviceType, getLocalIp, getWifiSsid } from '../../utils/lan/device';
-import { formatBytes, formatSpeed, formatEta, fileIconInfo, isImageFile } from '../../utils/format';
+import { formatBytes, formatSpeed, formatEta, fileIconInfo, isImageFile, isVideoFile } from '../../utils/format';
+import { listReceived, removeReceived } from '../../utils/lan/inbox';
 import { SCAN_EMPTY_TIMEOUT } from '../../utils/lan/constants';
 
 Page({
@@ -15,6 +16,9 @@ Page({
     scanHint: '',
     pickerVisible: false,
     authVisible: false,
+    inboxVisible: false,
+    inboxFiles: [],
+    inboxCount: 0,
     targetDevice: {},
     selectedFiles: [],
     totalSizeText: '0 B',
@@ -38,6 +42,7 @@ Page({
     this._scanTimer = null;
     this._bindCoreEvents();
     this._refreshSelfInfo();
+    this._refreshInbox();
     this._markScanning();
   },
 
@@ -256,6 +261,7 @@ Page({
 
   _onRecvDone(d) {
     Toast({ context: this, selector: '#t-toast', message: '接收完成', theme: 'success' });
+    this._refreshInbox();
     const files = d.files || [];
     if (!files.length) {
       this.setData({ transferVisible: false });
@@ -264,9 +270,9 @@ Page({
     const first = files[0];
     const bad = files.filter((f) => !f.verifyOk).length;
     const content =
-      `已保存 ${files.length} 个文件至小程序目录` +
+      `已保存 ${files.length} 个文件` +
       (bad ? `, 其中 ${bad} 个文件校验未通过` : '') +
-      `, 首个文件: ${first.name}`;
+      `, 可随时在首页「接收文件」中查看, 首个文件: ${first.name}`;
     this.setData({ transferVisible: false, authVisible: true });
     Dialog.confirm({
       context: this,
@@ -284,8 +290,8 @@ Page({
   },
 
   _openFile(file) {
-    if (isImageFile(file.name)) {
-      wx.previewImage({ urls: [file.path], fail: () => {} });
+    if (isImageFile(file.name) || isVideoFile(file.name)) {
+      wx.previewMedia({ sources: [{ url: file.path }], fail: () => {} });
       return;
     }
     wx.openDocument({
@@ -295,6 +301,90 @@ Page({
         Toast({ context: this, selector: '#t-toast', message: '该文件类型暂不支持预览', theme: 'warning' });
       },
     });
+  },
+
+  // ---------- 接收文件管理 ----------
+  _refreshInbox() {
+    const inboxFiles = listReceived();
+    this.setData({ inboxFiles, inboxCount: inboxFiles.length });
+  },
+
+  onOpenInbox() {
+    this._refreshInbox();
+    this.setData({ inboxVisible: true });
+  },
+
+  onInboxVisibleChange(e) {
+    this.setData({ inboxVisible: e.detail.visible });
+  },
+
+  onCloseInbox() {
+    this.setData({ inboxVisible: false });
+  },
+
+  onInboxOpen(e) {
+    const file = this.data.inboxFiles[e.currentTarget.dataset.index];
+    if (file) this._openFile(file);
+  },
+
+  onInboxSave(e) {
+    const file = this.data.inboxFiles[e.currentTarget.dataset.index];
+    if (!file) return;
+    const onFail = (err) => {
+      const msg = (err && err.errMsg) || '';
+      if (/auth|deny|permission/i.test(msg)) {
+        this.setData({ authVisible: true });
+        Dialog.confirm({
+          context: this,
+          selector: '#t-dialog',
+          title: '需要相册权限',
+          content: '请在设置中允许保存到相册',
+          confirmBtn: '去设置',
+          cancelBtn: '取消',
+        })
+          .then(() => wx.openSetting())
+          .catch(() => {})
+          .finally(() => this.setData({ authVisible: false }));
+        return;
+      }
+      Toast({ context: this, selector: '#t-toast', message: '保存失败', theme: 'error' });
+    };
+    const onOk = () =>
+      Toast({ context: this, selector: '#t-toast', message: '已保存到相册', theme: 'success' });
+    if (isImageFile(file.name)) {
+      wx.saveImageToPhotosAlbum({ filePath: file.path, success: onOk, fail: onFail });
+    } else if (isVideoFile(file.name)) {
+      wx.saveVideoToPhotosAlbum({ filePath: file.path, success: onOk, fail: onFail });
+    } else if (wx.saveFileToDisk) {
+      // PC 微信: 直接另存到本地磁盘
+      wx.saveFileToDisk({
+        filePath: file.path,
+        success: () =>
+          Toast({ context: this, selector: '#t-toast', message: '已保存到磁盘', theme: 'success' }),
+        fail: onFail,
+      });
+    } else {
+      // 移动端通用文件: 通过系统文档菜单转发/另存
+      wx.openDocument({
+        filePath: file.path,
+        showMenu: true,
+        success: () =>
+          Toast({
+            context: this,
+            selector: '#t-toast',
+            message: '点击右上角菜单可转发或另存文件',
+            duration: 2500,
+          }),
+        fail: () =>
+          Toast({ context: this, selector: '#t-toast', message: '该文件类型暂不支持预览', theme: 'warning' }),
+      });
+    }
+  },
+
+  onInboxRemove(e) {
+    const file = this.data.inboxFiles[e.currentTarget.dataset.index];
+    if (!file) return;
+    removeReceived(file.path).then(() => this._refreshInbox());
   },
 
   _onTransferError(e) {
@@ -404,7 +494,7 @@ Page({
   _radarLoop() {
     if (!this._canvas || !this._radar) return;
     // 弹层展示期间画布被隐藏 (原生组件层级最高, 避免遮挡弹窗), 暂停绘制
-    if (this.data.pickerVisible || this.data.transferVisible || this.data.authVisible) {
+    if (this.data.pickerVisible || this.data.transferVisible || this.data.authVisible || this.data.inboxVisible) {
       this._rafId = this._canvas.requestAnimationFrame(() => this._radarLoop());
       return;
     }
