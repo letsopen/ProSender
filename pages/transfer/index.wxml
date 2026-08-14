@@ -30,7 +30,7 @@
 
   <!-- 雷达扫描区 -->
   <view class="radar-card">
-    <view class="radar-wrap">
+    <view class="radar-wrap" hidden="{{ pickerVisible || transferVisible || authVisible }}">
       <canvas type="2d" id="radarCanvas" class="radar"></canvas>
       <view class="radar-center">
         <t-avatar icon="mobile" shape="circle" size="80rpx" />

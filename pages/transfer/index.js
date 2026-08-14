@@ -14,6 +14,7 @@ Page({
     devices: [],
     scanHint: '',
     pickerVisible: false,
+    authVisible: false,
     targetDevice: {},
     selectedFiles: [],
     totalSizeText: '0 B',
@@ -254,16 +255,19 @@ Page({
   },
 
   _onRecvDone(d) {
-    this.setData({ transferVisible: false });
     Toast({ context: this, selector: '#t-toast', message: '接收完成', theme: 'success' });
     const files = d.files || [];
-    if (!files.length) return;
+    if (!files.length) {
+      this.setData({ transferVisible: false });
+      return;
+    }
     const first = files[0];
     const bad = files.filter((f) => !f.verifyOk).length;
     const content =
       `已保存 ${files.length} 个文件至小程序目录` +
       (bad ? `, 其中 ${bad} 个文件校验未通过` : '') +
       `, 首个文件: ${first.name}`;
+    this.setData({ transferVisible: false, authVisible: true });
     Dialog.confirm({
       context: this,
       selector: '#t-dialog',
@@ -273,7 +277,10 @@ Page({
       cancelBtn: '完成',
     })
       .then(() => this._openFile(first))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        this.setData({ authVisible: false });
+      });
   },
 
   _openFile(file) {
@@ -307,6 +314,8 @@ Page({
     const content = `设备 [${meta.deviceName}] (${meta.ip}) 请求向您发送 ${meta.totalFiles} 个文件, 共计 ${formatBytes(
       meta.totalSize,
     )}`;
+    // canvas 为原生组件, 层级高于弹窗, 弹窗期间隐藏雷达避免遮挡
+    this.setData({ authVisible: true });
     Dialog.confirm({
       context: this,
       selector: '#t-dialog',
@@ -324,16 +333,22 @@ Page({
       })
       .catch(() => {
         session.reject();
+      })
+      .finally(() => {
+        this.setData({ authVisible: false });
       });
   },
 
   _onLocalNetworkDenied() {
+    this.setData({ authVisible: true });
     Dialog.alert({
       context: this,
       selector: '#t-dialog',
       title: '本地网络权限受限',
       content: '请在系统设置中为微信开启"本地网络"权限, 否则无法发现局域网设备',
       confirmBtn: '我知道了',
+    }).finally(() => {
+      this.setData({ authVisible: false });
     });
   },
 
@@ -386,6 +401,11 @@ Page({
 
   _radarLoop() {
     if (!this._canvas || !this._radar) return;
+    // 弹层展示期间画布被隐藏 (原生组件层级最高, 避免遮挡弹窗), 暂停绘制
+    if (this.data.pickerVisible || this.data.transferVisible || this.data.authVisible) {
+      this._rafId = this._canvas.requestAnimationFrame(() => this._radarLoop());
+      return;
+    }
     const { ctx, size } = this._radar;
     const c = size / 2;
     const R = c - 4;
