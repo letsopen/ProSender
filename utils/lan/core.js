@@ -42,7 +42,16 @@ class LanCore extends Emitter {
   // 传输请求入口: 无活跃接收会话时创建新会话并转发首个报文
   _dispatch(ip, port, obj) {
     if (obj.type !== MSG.TRANSFER_REQ) return;
-    if (this._receiver) return; // 同一时刻仅处理一个接收会话
+    if (this._receiver) {
+      const st = this._receiver.state;
+      // 传输进行中: 拒绝新请求
+      if (st === 'RECEIVING') return;
+      // 同一批次的重复请求: 忽略 (等待用户操作授权弹窗)
+      if (st === 'PROMPTING' && this._receiver.meta && this._receiver.meta.batchId === obj.batchId) return;
+      // 悬置/僵死会话 (如弹窗未处理): 静默销毁并替换为新会话
+      this._receiver.dispose();
+      this._receiver = null;
+    }
     const session = new ReceiverSession(this.link, ip, port);
     this._receiver = session;
     session.on('request', (payload) => this.emit('request', payload));

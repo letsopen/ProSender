@@ -299,6 +299,8 @@ Page({
 
   _onTransferError(e) {
     this.setData({ transferVisible: false });
+    // 本端主动拒绝/取消的静默事件不弹提示
+    if (e && e.silent) return;
     Toast({
       context: this,
       selector: '#t-toast',

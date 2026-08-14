@@ -73,13 +73,29 @@ export default class ReceiverSession extends Emitter {
     return this._meta;
   }
 
+  get state() {
+    return this._state;
+  }
+
   // 供 core 转发会话首个报文 (会话创建于 TRANSFER_REQ 到达之后)
   dispatch(ip, obj) {
     this._handlePacket(ip, obj);
   }
 
+  // 静默销毁 (供 core 替换悬置会话), 不通知对端不触发事件
+  dispose() {
+    if (['COMPLETED', 'ERROR', 'CANCELED'].includes(this._state)) return;
+    this._state = 'CANCELED';
+    if (this._promptTimer) {
+      clearTimeout(this._promptTimer);
+      this._promptTimer = null;
+    }
+    this._detach();
+  }
+
   accept() {
     if (this._state !== 'PROMPTING') return;
+    this._clearPromptTimer();
     this._state = 'RECEIVING';
     this._lastSpeedAt = Date.now();
     this._lastSpeedBytes = 0;
@@ -90,11 +106,21 @@ export default class ReceiverSession extends Emitter {
 
   reject() {
     if (this._state !== 'PROMPTING') return;
+    this._clearPromptTimer();
     this._state = 'CANCELED';
     this._reliable({ type: MSG.TRANSFER_RESP, batchId: this._meta.batchId, status: RESP_STATUS.REJECTED }).catch(
       () => {},
     );
     this._detach();
+    // 必须通知 core 释放会话引用, 否则后续传输请求会被永远忽略
+    this.emit('error', { canceled: true, silent: true, message: '已拒绝本次传输' });
+  }
+
+  _clearPromptTimer() {
+    if (this._promptTimer) {
+      clearTimeout(this._promptTimer);
+      this._promptTimer = null;
+    }
   }
 
   cancel() {
@@ -163,6 +189,11 @@ export default class ReceiverSession extends Emitter {
     };
     this._state = 'PROMPTING';
     this.emit('request', { meta: this._meta, session: this });
+    // 授权超时兜底: 用户长时间未操作则自动拒绝, 避免会话悬置阻塞后续请求
+    this._clearPromptTimer();
+    this._promptTimer = setTimeout(() => {
+      if (this._state === 'PROMPTING') this.reject();
+    }, 60000);
   }
 
   _onFileHeader(obj) {
