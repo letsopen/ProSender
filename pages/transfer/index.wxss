@@ -177,6 +177,35 @@
   padding: 8rpx 0 8rpx 28rpx;
 }
 
+/* 网段分组标签 */
+.subnet-tabs {
+  margin-bottom: 16rpx;
+  white-space: nowrap;
+}
+
+.subnet-tabs__inner {
+  display: inline-flex;
+  gap: 16rpx;
+}
+
+.subnet-tab {
+  display: inline-flex;
+  align-items: center;
+  font-size: 24rpx;
+  color: var(--td-text-color-secondary);
+  background: var(--td-bg-color-container);
+  border: 1rpx solid var(--td-border-level-1-color);
+  border-radius: 999rpx;
+  padding: 10rpx 24rpx;
+}
+
+.subnet-tab--active {
+  color: #ffffff;
+  background: #0052d9;
+  border-color: #0052d9;
+  font-weight: 500;
+}
+
 /* 邻居列表 */
 .section-title {
   margin: 32rpx 0 16rpx;

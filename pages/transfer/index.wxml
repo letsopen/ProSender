@@ -16,9 +16,9 @@
             <t-icon name="wifi" size="26rpx" color="#bcd4ff" />
             <text class="net-tag__text">{{ ssid }}</text>
           </view>
-          <view class="net-tag">
+          <view class="net-tag" wx:for="{{ ips }}" wx:key="*this">
             <t-icon name="link" size="26rpx" color="#bcd4ff" />
-            <text class="net-tag__text">{{ ip }}</text>
+            <text class="net-tag__text">{{ item }}</text>
           </view>
         </view>
       </view>
@@ -56,9 +56,22 @@
 
   <!-- 在线邻居列表 -->
   <view class="section-title">在线邻居 ({{ devices.length }})</view>
-  <t-cell-group wx:if="{{ devices.length }}">
+  <scroll-view scroll-x class="subnet-tabs" wx:if="{{ subnets.length > 1 }}">
+    <view class="subnet-tabs__inner">
+      <view
+        wx:for="{{ subnets }}"
+        wx:key="name"
+        class="subnet-tab {{ activeSubnet === item.name ? 'subnet-tab--active' : '' }}"
+        data-name="{{ item.name }}"
+        bindtap="onSubnetTab"
+      >
+        {{ item.name }}.x · {{ item.count }}
+      </view>
+    </view>
+  </scroll-view>
+  <t-cell-group wx:if="{{ groupedDevices.length }}">
     <t-cell
-      wx:for="{{ devices }}"
+      wx:for="{{ groupedDevices }}"
       wx:key="ip"
       title="{{ item.deviceName }}"
       description="{{ item.ip }}"

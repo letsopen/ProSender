@@ -36,7 +36,7 @@ class LanCore extends Emitter {
       this.discovery.start();
     }
     this.discovery.ping();
-    this.discovery.scanSubnet();
+    this.discovery.scanSubnets();
   }
 
   // 传输请求入口: 无活跃接收会话时创建新会话并转发首个报文

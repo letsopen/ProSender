@@ -1,18 +1,24 @@
 import Toast from 'tdesign-miniprogram/toast/index';
 import Dialog from 'tdesign-miniprogram/dialog/index';
 import LanCore from '../../utils/lan/core';
-import { getDeviceName, setDeviceName, getDeviceType, getLocalIp, getWifiSsid } from '../../utils/lan/device';
+import { getDeviceName, setDeviceName, getDeviceType, getLocalIps, getWifiSsid } from '../../utils/lan/device';
 import { formatBytes, formatSpeed, formatEta, fileIconInfo, isImageFile, isVideoFile } from '../../utils/format';
 import { listReceived, removeReceived } from '../../utils/lan/inbox';
 import { SCAN_EMPTY_TIMEOUT } from '../../utils/lan/constants';
+
+// 雷达落点网段配色盘
+const SUBNET_COLORS = ['#37d67a', '#fa9550', '#8b5cf6', '#0594fa', '#e37318', '#ed7b2f', '#d54941', '#2ba471'];
 
 Page({
   data: {
     deviceName: '',
     deviceType: '',
-    ip: '获取中...',
+    ips: [],
     ssid: '获取中...',
     devices: [],
+    subnets: [],
+    activeSubnet: '',
+    groupedDevices: [],
     scanHint: '',
     pickerVisible: false,
     authVisible: false,
@@ -79,16 +85,39 @@ Page({
 
   _refreshSelfInfo() {
     this.setData({ deviceName: getDeviceName(), deviceType: getDeviceType() });
-    getLocalIp().then((ip) => this.setData({ ip }));
+    getLocalIps().then((ips) => this.setData({ ips: ips.length ? ips : ['未知'] }));
     getWifiSsid().then((ssid) => this.setData({ ssid }));
   },
 
   _onDevices(list) {
-    this.setData({ devices: list });
+    // 按网段分组
+    const groups = new Map();
+    list.forEach((d) => {
+      const s = d.subnet || '未知网段';
+      if (!groups.has(s)) groups.set(s, []);
+      groups.get(s).push(d);
+    });
+    const subnets = Array.from(groups, ([name, arr]) => ({ name, count: arr.length }));
+    let activeSubnet = this.data.activeSubnet;
+    if (!subnets.some((s) => s.name === activeSubnet)) {
+      activeSubnet = subnets.length ? subnets[0].name : '';
+    }
+    this.setData({
+      devices: list,
+      subnets,
+      activeSubnet,
+      groupedDevices: groups.get(activeSubnet) || [],
+    });
     if (list.length && this.data.scanHint) {
       this.setData({ scanHint: '' });
     }
     this._syncRadarDots();
+  },
+
+  onSubnetTab(e) {
+    const name = e.currentTarget.dataset.name;
+    const grouped = this.data.devices.filter((d) => (d.subnet || '未知网段') === name);
+    this.setData({ activeSubnet: name, groupedDevices: grouped });
   },
 
   _markScanning() {
@@ -481,13 +510,15 @@ Page({
   },
 
   _syncRadarDots() {
-    // 依据 IP 生成稳定的雷达落点
+    // 依据 IP 生成稳定的雷达落点, 按网段分配颜色
+    const subnetOrder = this.data.subnets.map((s) => s.name);
     this._dots = this.data.devices.map((d) => {
       let hash = 0;
       for (let i = 0; i < d.ip.length; i++) hash = (hash * 31 + d.ip.charCodeAt(i)) >>> 0;
       const angle = ((hash % 360) * Math.PI) / 180;
       const radius = 0.35 + ((hash >> 8) % 50) / 100;
-      return { angle, radius };
+      const idx = Math.max(0, subnetOrder.indexOf(d.subnet || '未知网段'));
+      return { angle, radius, color: SUBNET_COLORS[idx % SUBNET_COLORS.length] };
     });
   },
 
@@ -557,19 +588,21 @@ Page({
       ctx.stroke();
     });
 
-    // 在线设备落点
+    // 在线设备落点 (不同网段不同颜色)
     (this._dots || []).forEach((dot) => {
       const x = c + R * dot.radius * Math.cos(dot.angle);
       const y = c + R * dot.radius * Math.sin(dot.angle);
       ctx.beginPath();
       ctx.arc(x, y, 5, 0, Math.PI * 2);
-      ctx.fillStyle = '#37d67a';
+      ctx.fillStyle = dot.color || '#37d67a';
       ctx.fill();
       ctx.beginPath();
       ctx.arc(x, y, 9, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(55, 214, 122, 0.5)';
+      ctx.strokeStyle = dot.color || '#37d67a';
+      ctx.globalAlpha = 0.5;
       ctx.lineWidth = 1.5;
       ctx.stroke();
+      ctx.globalAlpha = 1;
     });
 
     this._radar.angle = (this._radar.angle + 0.02) % (Math.PI * 2);

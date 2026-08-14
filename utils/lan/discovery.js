@@ -1,6 +1,9 @@
 import Emitter from './emitter';
 import { PROTOCOL, UDP_PORT, BROADCAST_ADDR, MSG, PING_INTERVAL, DEVICE_TTL, SUBNET_SCAN_INTERVAL } from './constants';
-import { getDeviceId, getDeviceName, getDeviceType, getLocalIp } from './device';
+import { getDeviceId, getDeviceName, getDeviceType, getLocalIps, subnetOf, isPrivateIp } from './device';
+
+// 最多跟踪的网段数, 防止异常网络环境下扫描面失控
+const MAX_SUBNETS = 8;
 
 // UDP 设备发现: 广播 + 子网单播轮扫双通道 (真机普遍丢弃广播包, 单播全平台可靠)
 // 收到 PING 回 PONG 并互相收录, 10s 无心跳剔除
@@ -14,6 +17,7 @@ export default class Discovery extends Emitter {
     this._scanTimer = null;
     this._scanning = false;
     this._running = false;
+    this._learnedSubnets = new Set(); // 本机各网卡网段 + 对端报文学习到的网段
     this._onPacket = ({ ip, obj }) => this._handle(ip, obj);
   }
 
@@ -26,9 +30,9 @@ export default class Discovery extends Emitter {
     this._running = true;
     this._link.on('packet', this._onPacket);
     this.ping();
-    this.scanSubnet();
+    this.scanSubnets();
     this._pingTimer = setInterval(() => this.ping(), PING_INTERVAL);
-    this._scanTimer = setInterval(() => this.scanSubnet(), SUBNET_SCAN_INTERVAL);
+    this._scanTimer = setInterval(() => this.scanSubnets(), SUBNET_SCAN_INTERVAL);
     this._ttlTimer = setInterval(() => this._sweep(), 2000);
   }
 
@@ -58,13 +62,19 @@ export default class Discovery extends Emitter {
     this._link.send(this._selfPacket(MSG.PING), BROADCAST_ADDR, UDP_PORT);
   }
 
-  // 子网 /24 单播轮扫 (对真机有效), 每 tick 发 16 台, 避免瞬时洪泛
-  async scanSubnet() {
+  // 多网段子网轮扫: 本机所有网卡的 /24 + 学习到的对端网段, 逐个 C 段串行扫描
+  async scanSubnets() {
     if (this._scanning) return;
-    const ip = await getLocalIp();
-    if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return;
+    const ips = await getLocalIps();
+    const selfSet = new Set(ips);
+    ips.forEach((ip) => {
+      const s = subnetOf(ip);
+      if (s) this._learnedSubnets.add(s);
+    });
+    const subnets = Array.from(this._learnedSubnets).slice(0, MAX_SUBNETS);
+    if (!subnets.length) return;
     this._scanning = true;
-    const prefix = ip.split('.').slice(0, 3).join('.');
+    let si = 0;
     let host = 1;
     const timer = setInterval(() => {
       if (!this._running) {
@@ -72,12 +82,18 @@ export default class Discovery extends Emitter {
         this._scanning = false;
         return;
       }
-      for (let k = 0; k < 16 && host <= 254; k++, host++) {
-        const target = `${prefix}.${host}`;
-        if (target === ip) continue;
+      // 每 tick 发 16 台, 避免瞬时洪泛
+      for (let k = 0; k < 16 && si < subnets.length; k++) {
+        const target = `${subnets[si]}.${host}`;
+        host += 1;
+        if (host > 254) {
+          si += 1;
+          host = 1;
+        }
+        if (selfSet.has(target)) continue;
         this._link.send(this._selfPacket(MSG.PING), target, UDP_PORT);
       }
-      if (host > 254) {
+      if (si >= subnets.length) {
         clearInterval(timer);
         this._scanning = false;
       }
@@ -87,6 +103,14 @@ export default class Discovery extends Emitter {
   _handle(ip, obj) {
     if (!ip) return;
     if (obj.deviceId === getDeviceId()) return;
+    // 网段学习: 对端报文来自未知私网网段时, 纳入扫描范围 (多网段路由互通场景)
+    if (isPrivateIp(ip)) {
+      const s = subnetOf(ip);
+      if (s && !this._learnedSubnets.has(s) && this._learnedSubnets.size < MAX_SUBNETS) {
+        this._learnedSubnets.add(s);
+        this.scanSubnets();
+      }
+    }
     if (obj.action === MSG.PING) {
       this._upsert(ip, obj);
       this._link.send(this._selfPacket(MSG.PONG), ip, UDP_PORT);
@@ -104,6 +128,7 @@ export default class Discovery extends Emitter {
       deviceId: packet.deviceId,
       deviceName,
       deviceType,
+      subnet: subnetOf(ip) || '未知网段',
       udpPort: packet.udpPort || UDP_PORT,
       lastSeen: Date.now(),
     });

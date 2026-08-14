@@ -50,16 +50,39 @@ export function setDeviceName(name) {
 }
 
 export function getLocalIp() {
+  return getLocalIps().then((ips) => ips[0] || '未知');
+}
+
+// 获取本机全部局域网 IPv4 (PC 端微信多网卡会返回多个, 以分隔符连接)
+export function getLocalIps() {
   return new Promise((resolve) => {
     if (!wx.getLocalIPAddress) {
-      resolve('未知');
+      resolve([]);
       return;
     }
     wx.getLocalIPAddress({
-      success: (res) => resolve(res.localip || '未知'),
-      fail: () => resolve('未知'),
+      success: (res) => {
+        const raw = res.localip || '';
+        const ips = raw.split(/[,;\s]+/).filter((s) => /^\d+\.\d+\.\d+\.\d+$/.test(s));
+        resolve(ips);
+      },
+      fail: () => resolve([]),
     });
   });
+}
+
+export function subnetOf(ip) {
+  const m = String(ip).match(/^(\d+\.\d+\.\d+)\.\d+$/);
+  return m ? m[1] : '';
+}
+
+export function isPrivateIp(ip) {
+  return (
+    /^10\./.test(ip) ||
+    /^192\.168\./.test(ip) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ||
+    /^169\.254\./.test(ip)
+  );
 }
 
 export function getWifiSsid() {
